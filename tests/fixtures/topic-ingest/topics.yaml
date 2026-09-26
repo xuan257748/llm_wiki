@@ -1,0 +1,15 @@
+version: 1
+categories:
+  - id: sequences
+    name: 序列
+    topics:
+      - {id: se, name: 自旋回波, aliases: [SE]}
+      - {id: tse, name: 快速自旋回波, aliases: [TSE, FSE], related: [se]}
+      - {id: epi, name: 平面回波成像 EPI, aliases: [EPI]}
+      - {id: dwi, name: 扩散物理与 DWI, aliases: [DWI, ADC], related: [epi, b-value]}
+  - id: parameters
+    name: 扫描参数
+    topics:
+      - {id: tr, name: 重复时间, aliases: [TR]}
+      - {id: te, name: 回波时间, aliases: [TE]}
+      - {id: b-value, name: b 值, aliases: [b值, b-value]}
