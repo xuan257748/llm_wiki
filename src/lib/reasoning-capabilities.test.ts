@@ -59,3 +59,12 @@ describe("reasoning capabilities", () => {
       .toEqual({ mode: "auto" })
   })
 })
+
+ it("offers K3 effort levels only for official OpenAI-compatible Moonshot endpoints", () => {
+   for (const endpoint of ["https://api.moonshot.cn/v1", "https://api.moonshot.ai/v1", "https://api.kimi.ai/v1"]) {
+     const cfg = { ...config("custom", "kimi-k3"), customEndpoint: endpoint, apiMode: "chat_completions" as const }
+     expect(resolveReasoningCapabilities(cfg).modes).toEqual(["auto", "low", "high", "max"])
+     expect(normalizeReasoningForProvider(cfg, { mode: "off" })).toEqual({ mode: "auto" })
+   }
+   expect(resolveReasoningCapabilities(config("custom", "kimi-k3")).modes).toEqual(["auto"])
+ })

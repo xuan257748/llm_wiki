@@ -61,3 +61,15 @@ describe("ingest reasoning is settable instead of hardcoded off", () => {
     expect(resolveIngestReasoning(resolved)).toEqual({ mode: "low" })
   })
 })
+
+ it("sends K3 low for ingest and high for chat without disabling required thinking", () => {
+   const cfg: LlmConfig = { ...openAiConfig, provider: "custom", model: "kimi-k3", customEndpoint: "https://api.moonshot.cn/v1", apiMode: "chat_completions",
+     reasoning: { mode: "high" }, ingestReasoning: { mode: "low" } }
+   const provider = getProviderConfig(cfg)
+   const chat = provider.buildBody([{ role: "user", content: "hi" }]) as Record<string, unknown>
+   const ingest = provider.buildBody([{ role: "user", content: "hi" }], { reasoning: resolveIngestReasoning(cfg), temperature: 0.1 }) as Record<string, unknown>
+   expect(chat.reasoning_effort).toBe("high")
+   expect(ingest.reasoning_effort).toBe("low")
+   expect(ingest.thinking).toBeUndefined()
+   expect(ingest.temperature).toBeUndefined()
+ })

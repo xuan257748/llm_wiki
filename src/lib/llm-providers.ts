@@ -7,6 +7,7 @@ import {
 } from "@/lib/azure-openai"
 import {
   isAdaptiveAnthropicModel,
+  isKimiK3ChatConfig,
   isGeminiThinkingLevelModel,
   isOpenRouterEndpoint,
   normalizeReasoningForProvider,
@@ -463,6 +464,11 @@ function buildOpenAiCompatibleBody(
   adaptOpenAiStrictCompletionBody(config, body)
   adaptKimiBody(config, body)
   adaptXiaomiMimoBody(config, body, reasoning)
+  if (isKimiK3ChatConfig(config)) {
+    delete body.temperature
+    if (reasoning.mode !== "auto") body.reasoning_effort = reasoning.mode
+    return body
+  }
 
   if (config.provider === "custom" && isOpenRouterEndpoint(config.customEndpoint)) {
     if (reasoning.mode === "custom" && reasoning.budgetTokens !== undefined) {

@@ -63,6 +63,15 @@ export function isOpenRouterEndpoint(endpoint: string): boolean {
   }
 }
 
+/** K3's official OpenAI-compatible API uses effort, never a thinking-off toggle. */
+export function isKimiK3ChatConfig(config: LlmConfig): boolean {
+  if (config.provider !== "custom" || config.model.trim().toLowerCase() !== "kimi-k3" || config.apiMode === "anthropic_messages") return false
+  try {
+    const url = new URL(config.customEndpoint)
+    return ["api.moonshot.cn", "api.moonshot.ai", "api.kimi.ai"].includes(url.hostname.toLowerCase()) && !url.pathname.includes("anthropic")
+  } catch { return false }
+}
+
 /**
  * Resolve only capabilities that are part of the selected wire contract.
  * Generic custom gateways deliberately stay Auto-only: a vendor-looking
@@ -91,6 +100,7 @@ export function resolveReasoningCapabilities(config: LlmConfig): ReasoningCapabi
   if (config.provider === "openai" || config.provider === "azure") {
     return capabilities(isOpenAiReasoningModel(config) ? OPENAI_LEVELS : AUTO_ONLY)
   }
+  if (isKimiK3ChatConfig(config)) return capabilities(["auto", "low", "high", "max"])
   if (config.provider === "custom") {
     const endpoint = config.customEndpoint.toLowerCase()
     if (isOpenRouterEndpoint(endpoint)) return capabilities(BUDGET_LEVELS)
