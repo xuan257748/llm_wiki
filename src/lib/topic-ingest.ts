@@ -70,10 +70,21 @@ export async function runTopicIngest(c: TopicIngestContext): Promise<string[]> {
     for (const excerpt of excerpts) groups.set(excerpt.topicId, [...(groups.get(excerpt.topicId) ?? []), excerpt])
     const topicList = [...groups].map(([id, list]) => `${id}\n${list.flatMap(e => e.body.split("\n")).slice(0, 2).join("\n")}`).join("\n\n")
     activity.updateItem(c.activityId, { detail: "Writing source card..." })
-    const cardOutput = await generate(sourceCardPrompt.replace("<language rule>", () => c.language).replace("<sourceIdentity>", () => c.sourceIdentity).replace("<sourceSummaryPath>", () => c.sourceSummaryPath), `${c.enrichedSourceContent.slice(0, 6000)}\n\nExtracted topics:\n${topicList}`)
+    const cardOutput = await generate(sourceCardPrompt.replace("<language rule>", () => c.language).replace("<sourceIdentity>", () => c.sourceIdentity).replace("<sourceSummaryPath>", () => c.sourceSummaryPath), `Current date: ${new Date().toISOString().slice(0, 10)}\nSource: ${c.sourceIdentity}\n\n${c.enrichedSourceContent.slice(0, 6000)}\n\nExtracted topics:\n${topicList}`)
     const files = c.parseFiles(cardOutput)
     const cards = files.blocks.filter(b => b.path === c.sourceSummaryPath)
-    if (cards.length !== 1 || files.truncatedPaths.includes(c.sourceSummaryPath)) throw new Error("Source card missing, duplicated or truncated")
+    if (cards.length !== 1 || files.truncatedPaths.includes(c.sourceSummaryPath)) {
+      const diagnosticPath = ".llm-wiki/topic-ingest-source-card-failure.json"
+      try {
+        await createDirectory(`${c.projectPath}/.llm-wiki`)
+        await writeFile(`${c.projectPath}/${diagnosticPath}`, JSON.stringify({
+          source: c.sourceIdentity, expectedPath: c.sourceSummaryPath,
+          receivedPaths: files.blocks.map(block => block.path), truncatedPaths: files.truncatedPaths,
+          response: cardOutput,
+        }, null, 2))
+      } catch (error) { console.warn("[topic-ingest] could not save source-card diagnostic", error) }
+      throw new Error(`Source card missing, duplicated or truncated (expected ${c.sourceSummaryPath}; received ${cards.length} matching blocks). Details: ${diagnosticPath}`)
+    }
     const parsedCard = parseFrontmatter(cards[0].content)
     if (!parsedCard.frontmatter || !parsedCard.body.trim()) throw new Error("Source card has invalid frontmatter or empty body")
     const date = new Date().toISOString().slice(0, 10)

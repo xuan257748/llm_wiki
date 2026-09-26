@@ -42,4 +42,18 @@ Include:
 
 <language rule>
 Frontmatter rules: same as existing source pages (type: source, title, created, updated, tags, sources: ["<sourceIdentity>"]); also add \`devices: [...]\` if known.
-Output exactly one FILE block for path <sourceSummaryPath>.`
+Do not write an "涉及主题" section; the application adds it deterministically.
+Output exactly one FILE block using the literal delimiters below. Start with the ---FILE: line and finish with ---END FILE---. Do not wrap the block in Markdown code fences, do not use a bare FILE: label, and do not output any other paths or commentary.
+
+---FILE: <sourceSummaryPath>---
+---
+type: source
+title: <source title>
+created: <current date YYYY-MM-DD>
+updated: <current date YYYY-MM-DD>
+tags: []
+sources: []
+---
+# <source title>
+<short source card in the requested language, following the rules above>
+---END FILE---`

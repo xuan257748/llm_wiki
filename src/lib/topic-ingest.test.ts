@@ -64,6 +64,7 @@ describe("topic ingest", () => {
   it("fails before writing when the source card is truncated", async () => {
     responses = [excerpt(), card().replace("---END FILE---", "")]
     await expect(ingest()).rejects.toThrow()
+    expect(await readFileRaw(`${tmp.path}/.llm-wiki/topic-ingest-source-card-failure.json`)).toContain("truncated")
     expect(await fileExists(`${tmp.path}/wiki/topics`)).toBe(false)
     expect(await checkIngestCache(tmp.path, source, await readFileRaw(`${tmp.path}/raw/sources/${source}`))).toBeNull()
   })
@@ -136,4 +137,13 @@ it('carries page context into continuation chunks', async () => {
   responses = [...chunks.map(() => excerpt()), card()]
   await ingest()
   expect(calls[1].messages[1].content).toContain('Page 12')
+})
+it('instructs the source-card model with the exact FILE delimiters and destination', async () => {
+  responses = [excerpt(), card()]
+  await ingest()
+  const prompt = calls[1].messages[0].content
+  expect(prompt).toContain(`---FILE: ${summary}---`)
+  expect(prompt).toContain('---END FILE---')
+  expect(prompt).not.toContain('<sourceSummaryPath>')
+  expect(prompt).not.toContain('<sourceIdentity>')
 })
