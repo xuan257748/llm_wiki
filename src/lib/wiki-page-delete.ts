@@ -161,6 +161,7 @@ export interface CascadeDeleteResult {
 export async function cascadeDeleteWikiPagesWithRefs(
   projectPath: string,
   pagePaths: readonly string[],
+  options: { preserveTopicContent?: boolean } = {},
 ): Promise<CascadeDeleteResult> {
   const pp = normalizePath(projectPath)
   const result: CascadeDeleteResult = {
@@ -204,6 +205,8 @@ export async function cascadeDeleteWikiPagesWithRefs(
 
   for (const file of allMd) {
     if (result.deletedPaths.includes(file.path)) continue // already gone
+    // Source deletion owns only excerpt blocks; handwritten topic text must survive.
+    if (options.preserveTopicContent && normalizePath(file.path).startsWith(`${pp}/wiki/topics/`)) continue
     let content: string
     try {
       content = await readFile(file.path)

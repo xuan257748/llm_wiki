@@ -1,3 +1,6 @@
+import { loadTopicCatalog } from "@/lib/topic-catalog"
+import { removeExcerptBlocks } from "@/lib/topic-page"
+import { rebuildTopicIndex } from "@/lib/topic-index"
 import {
   copyFile,
   createDirectory,
@@ -480,6 +483,8 @@ export async function deleteSourceFiles(
     sourceInfos.map((info) => sourceReferenceIdentity(info.identity).toLowerCase()),
   )
 
+  const topicCatalog = await loadTopicCatalog(pp)
+
   if (!options.fileAlreadyDeleted) {
     for (const info of sourceInfos) {
       await deleteFile(info.source)
@@ -527,6 +532,18 @@ export async function deleteSourceFiles(
       continue
     }
 
+    if (normalizePath(file.path).startsWith(`${pp}/wiki/topics/`)) {
+      let updated = content
+      for (const info of sourceInfos) updated = removeExcerptBlocks(updated, info.identity)
+      if (updated !== content) {
+        await writeFile(file.path, updated)
+        rewrittenSourcePages++
+        const pageId = getFileName(file.path).replace(/\.md$/, "")
+        await removePageEmbedding(pp, pageId).catch(err => console.warn("[topic-delete] embedding cleanup failed", err))
+      }
+      continue
+    }
+
     const sources = parseSources(content)
     if (sources.length === 0) {
       skippedPages++
@@ -555,9 +572,11 @@ export async function deleteSourceFiles(
   let deletedWikiPaths: string[] = []
   if (pagesToDelete.length > 0) {
     const { cascadeDeleteWikiPagesWithRefs } = await import("@/lib/wiki-page-delete")
-    const result = await cascadeDeleteWikiPagesWithRefs(pp, pagesToDelete)
+    const result = await cascadeDeleteWikiPagesWithRefs(pp, pagesToDelete, { preserveTopicContent: true })
     deletedWikiPaths = result.deletedPaths
   }
+
+  if (topicCatalog) await rebuildTopicIndex(pp, topicCatalog)
 
   await appendSourceDeleteLog(pp, sourceInfos.map((info) => info.identity), {
     reason: options.logReason ?? (options.fileAlreadyDeleted ? "external delete" : "delete"),
