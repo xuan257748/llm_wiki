@@ -22,10 +22,21 @@ function metadata(content: string, source: string, remove: boolean, date: string
   const next = remove ? sources.filter(s => s !== source) : [...new Set([...sources, source])]
   let raw = parsed.rawBlock
   for (const [key, value] of [["sources", JSON.stringify(next)], ["updated", date]]) {
-    const pattern = new RegExp(`^${key}:[^\\r\\n]*(?:\\r?\\n(?:[ \\t]+[^\\r\\n]*|-[ \\t]+[^\\r\\n]*))*`, "m")
-    if (pattern.test(raw)) raw = raw.replace(pattern, () => `${key}: ${value}`)
-    else raw = raw.replace(/\r?\n---(?=\s*$)/, () => `\n${key}: ${value}\n---`)
+    const lines = raw.match(/[^\n]*\n|[^\n]+$/g) ?? []
+    const start = lines.findIndex(line => new RegExp(`^(?:${key}|"${key}"|'${key}')[ \t]*:`).test(line))
+    if (start < 0) {
+      raw = raw.replace(/\r?\n---(?=\s*$)/, () => `\n${key}: ${value}\n---`)
+      continue
+    }
+    let end = start + 1
+    // A field extends through flow-list closers and unindented block-list
+    // items/comments, until the next root mapping key or YAML closing fence.
+    while (end < lines.length && !/^(?:---[ \t]*(?:\r?\n|$)|[^ \t#\-\[\]{}\n][^\r\n]*?:[ \t\r\n])/.test(lines[end])) end++
+    const comments = lines.slice(start + 1, end).filter(line => /^[ \t]*(?:#|\r?$)/.test(line))
+    lines.splice(start, end - start, `${key}: ${value}\n`, ...comments)
+    raw = lines.join("")
   }
+  if (!parseFrontmatter(raw + content.slice(parsed.rawBlock.length)).frontmatter) throw new Error("Could not safely update topic frontmatter")
   return raw + content.slice(parsed.rawBlock.length)
 }
 
@@ -62,15 +73,17 @@ export function upsertExcerptBlock(content: string, sourceIdentity: string, bloc
     replaced = true
     return block
   })
+  let hs = headings(next)
+  let section = hs.find(h => h.title === "资料摘录")
+  if (!section) {
+    const at = next.search(blockPattern()) >= 0
+      ? next.search(blockPattern())
+      : hs.find(h => h.title === "网络补充")?.start ?? next.length
+    next = next.slice(0, at) + (at && !next.slice(0, at).endsWith("\n") ? "\n" : "") + "## 资料摘录\n\n" + next.slice(at)
+    hs = headings(next)
+    section = hs.find(h => h.title === "资料摘录")!
+  }
   if (!replaced) {
-    let hs = headings(next)
-    let section = hs.find(h => h.title === "资料摘录")
-    if (!section) {
-      const at = hs.find(h => h.title === "网络补充")?.start ?? next.length
-      next = next.slice(0, at) + (at && !next.slice(0, at).endsWith("\n") ? "\n" : "") + "## 资料摘录\n\n" + next.slice(at)
-      hs = headings(next)
-      section = hs.find(h => h.title === "资料摘录")!
-    }
     const end = hs.find(h => h.start > section!.start)?.start ?? next.length
     next = next.slice(0, end) + (next.slice(0, end).endsWith("\n") ? "" : "\n") + block + "\n" + next.slice(end)
   }

@@ -572,7 +572,9 @@ export async function deleteSourceFiles(
   let deletedWikiPaths: string[] = []
   if (pagesToDelete.length > 0) {
     const { cascadeDeleteWikiPagesWithRefs } = await import("@/lib/wiki-page-delete")
-    const result = await cascadeDeleteWikiPagesWithRefs(pp, pagesToDelete, { preserveTopicContent: true })
+    const result = allMd.some(file => normalizePath(file.path).startsWith(`${pp}/wiki/topics/`))
+      ? await cascadeDeleteWikiPagesWithRefs(pp, pagesToDelete, { preserveTopicContent: true })
+      : await cascadeDeleteWikiPagesWithRefs(pp, pagesToDelete)
     deletedWikiPaths = result.deletedPaths
   }
 

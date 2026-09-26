@@ -31,7 +31,7 @@ beforeEach(async () => {
   await writeFileRaw(`${tmp.path}/topics.yaml`, fixture)
   await writeFileRaw(`${tmp.path}/raw/sources/${source}`, "## Page 12\nDWI: b = 1000 s/mm². Aera / E11.")
 })
-afterEach(async () => { await tmp.cleanup() })
+afterEach(async () => { vi.restoreAllMocks(); await tmp.cleanup() })
 describe("topic ingest", () => {
   it("imports topics and source card only, then replaces old excerpts across topics", async () => {
     responses = [excerpt(), card() + "\n---FILE: wiki/concepts/bad.md---\nBAD\n---END FILE---"]
@@ -88,4 +88,52 @@ it("deletes only source excerpts and preserves topic pages and handwritten links
   expect(remaining).not.toContain("excerpt:begin")
   expect(remaining).toContain("sources: []")
   expect(await readFileRaw(`${tmp.path}/wiki/index.md`)).toContain("[[dwi|扩散物理与 DWI]] · 0 份资料")
+})
+
+it("does not cache an incomplete excerpt response or a failed write", async () => {
+  responses = [excerpt().replace("---END EXCERPT---", "")]
+  await expect(ingest()).rejects.toThrow("Unclosed excerpt")
+  expect(await fileExists(`${tmp.path}/wiki/topics`)).toBe(false)
+  responses = [excerpt(), card()]
+  vi.spyOn(realFs, "writeFile").mockRejectedValueOnce(new Error("disk full"))
+  await expect(ingest()).rejects.toThrow("disk full")
+  expect(await checkIngestCache(tmp.path, source, await readFileRaw(`${tmp.path}/raw/sources/${source}`))).toBeNull()
+  expect(useActivityStore.getState().items[0].status).toBe("error")
+})
+
+it("extracts original long chunks without analysis and keeps per-chunk order", async () => {
+  useWikiStore.getState().setLlmConfig({ ...useWikiStore.getState().llmConfig, maxContextSize: 16000 })
+  const text = Array.from({ length: 350 }, (_, i) => `## Page ${i + 1}\n- DWI parameter b = ${i} s/mm²; TR = 4000 ms.\n`).join("\n")
+  await writeFileRaw(`${tmp.path}/raw/sources/${source}`, text)
+  const { computeIngestSourceBudget, splitSourceIntoSemanticChunks } = await import("./ingest")
+  const { parseTopicCatalog, renderTopicCatalog } = await import("./topic-catalog")
+  const chunks = splitSourceIntoSemanticChunks(text, computeIngestSourceBudget(16000, renderTopicCatalog(parseTopicCatalog(fixture)).length), 0)
+  expect(chunks.length).toBeGreaterThan(1)
+  responses = [...chunks.map((_, i) => excerpt().replace("1000", String(i))), card()]
+  await ingest()
+  expect(calls).toHaveLength(chunks.length + 1)
+  for (let i = 0; i < chunks.length; i++) expect(calls[i].messages[1].content).toContain(chunks[i].main)
+  const content = await readFileRaw(`${tmp.path}/wiki/topics/sequences/dwi.md`)
+  expect(content.match(/excerpt:begin/g)).toHaveLength(1)
+  expect(content.indexOf("b = 0")).toBeLessThan(content.indexOf("b = 1"))
+})
+it.each(['---EXCERPT: dwi', `${excerpt()}\n---EXCERPT: te`])('rejects an incomplete excerpt header without deleting existing knowledge', async output => {
+  responses = [excerpt(), card()]
+  await ingest()
+  const before = await readFileRaw(`${tmp.path}/wiki/topics/sequences/dwi.md`)
+  await writeFileRaw(`${tmp.path}/raw/sources/${source}`, 'changed source')
+  responses = [output, card()]
+  await expect(ingest()).rejects.toThrow()
+  expect(await readFileRaw(`${tmp.path}/wiki/topics/sequences/dwi.md`)).toBe(before)
+})
+it('carries page context into continuation chunks', async () => {
+  useWikiStore.getState().setLlmConfig({ ...useWikiStore.getState().llmConfig, maxContextSize: 16000 })
+  const text = '## Page 12\n' + '- TR = 4000 ms; b = 1000 s/mm².\n'.repeat(1000)
+  await writeFileRaw(`${tmp.path}/raw/sources/${source}`, text)
+  const { computeIngestSourceBudget, splitSourceIntoSemanticChunks } = await import('./ingest')
+  const { parseTopicCatalog, renderTopicCatalog } = await import('./topic-catalog')
+  const chunks = splitSourceIntoSemanticChunks(text, computeIngestSourceBudget(16000, renderTopicCatalog(parseTopicCatalog(fixture)).length), 0)
+  responses = [...chunks.map(() => excerpt()), card()]
+  await ingest()
+  expect(calls[1].messages[1].content).toContain('Page 12')
 })

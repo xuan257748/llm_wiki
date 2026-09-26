@@ -27,7 +27,7 @@ export interface TopicIngestContext {
   onFileWritten?: (path: string) => void
   runCommit: <T>(operation: () => Promise<T>) => Promise<T>
   sourceBudget: (contextSize: number | undefined, stableLength: number) => number
-  splitChunks: (content: string, target: number, overlap: number) => Array<{ main: string }>
+  splitChunks: (content: string, target: number, overlap: number) => Array<{ main: string; headingPath?: string }>
   maxTokens: (contextSize: number | undefined) => number
   language: string
   parseFiles: (text: string) => { blocks: Array<{ path: string; content: string }>; truncatedPaths: string[] }
@@ -58,7 +58,7 @@ export async function runTopicIngest(c: TopicIngestContext): Promise<string[]> {
     const system = excerptPrompt.replace("<language rule from languageRule()>", () => c.language).replace("<rendered catalog>", () => rendered).replace("<purpose.md, if non-empty>", () => c.purpose)
     for (let i = 0; i < chunks.length; i++) {
       activity.updateItem(c.activityId, { detail: `Extracting topic excerpts ${i + 1}/${chunks.length}...` })
-      const output = await generate(system, `Source: ${c.sourceIdentity}\nFolder context: ${c.folderContext ?? ""}\nChunk ${i + 1}/${chunks.length}\n\n---\n\n${chunks[i].main}`)
+      const output = await generate(system, `Source: ${c.sourceIdentity}\nFolder context: ${c.folderContext ?? ""}\nSection/page context: ${chunks[i].headingPath ?? ""}\nChunk ${i + 1}/${chunks.length}\n\n---\n\n${chunks[i].main}`)
       const parsed = parseExcerptBlocks(output, c.catalog)
       warnings.push(...parsed.warnings)
       // Never replace complete old excerpts with a partially generated source.

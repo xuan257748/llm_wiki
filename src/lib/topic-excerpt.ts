@@ -2,6 +2,11 @@ import { findTopic, type TopicCatalog } from "./topic-catalog"
 export interface TopicExcerpt { topicId: string; location?: string; device?: string; suggest?: string; body: string }
 export function parseExcerptBlocks(text: string, catalog: TopicCatalog): { excerpts: TopicExcerpt[]; warnings: string[] } {
   const excerpts: TopicExcerpt[] = [], warnings: string[] = []
+  for (const line of text.split(/\r?\n/)) {
+    if (/^---EXCERPT:/.test(line) && !/^---EXCERPT:\s*[^\r\n]+?---[ \t]*$/.test(line)) {
+      warnings.push(`Unclosed excerpt header: ${line}`)
+    }
+  }
   const starts = [...text.matchAll(/^---EXCERPT:\s*([^\r\n]+?)---[ \t]*\r?$/gm)]
   for (let i = 0; i < starts.length; i++) {
     const start = starts[i]

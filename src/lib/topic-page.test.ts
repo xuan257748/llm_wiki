@@ -43,3 +43,20 @@ describe("topic pages", () => {
     expect(removeExcerptBlocks(next, "absent")).toBe(next)
   })
 })
+
+it("restores a missing section even when replacing an existing block", () => {
+  const page = upsertExcerptBlock(skeleton(), "a", "- old").replace("## 资料摘录\n", "")
+  expect(upsertExcerptBlock(page, "a", "- new")).toContain("## 资料摘录\n")
+})
+it("edits multiline source arrays while preserving following fields", () => {
+  const page = skeleton().replace("sources: []", "sources:\n  - old\ncustom: keep")
+  const next = upsertExcerptBlock(page, "new", "- 1")
+  expect(parseFrontmatter(next).frontmatter?.sources).toEqual(["old", "new"])
+  expect(next).toContain("custom: keep")
+})
+it.each(['sources: [\n  old\n]', 'sources:\n- old\n# retained comment\n- another'])('handles valid multiline YAML: %s', sources => {
+  const page = skeleton().replace('sources: []', sources)
+  const next = upsertExcerptBlock(page, 'new', '- text')
+  expect(parseFrontmatter(next).frontmatter?.sources).toContain('new')
+  expect(parseFrontmatter(next).frontmatter?.type).toBe('topic')
+})
