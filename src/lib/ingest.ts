@@ -1,3 +1,5 @@
+import { loadTopicCatalog } from "@/lib/topic-catalog"
+import { runTopicIngest } from "@/lib/topic-ingest"
 import {
   createDirectory,
   deleteFile,
@@ -991,6 +993,26 @@ async function autoIngestImpl(
       // Fall through with original (empty-alt) source content —
       // captioning failure must NEVER break ingest.
     }
+  }
+
+  try {
+    const catalog = await loadTopicCatalog(pp)
+    if (catalog) return await runTopicIngest({
+      projectPath: pp, sourceIdentity, sourceContent, enrichedSourceContent,
+      sourceSummaryPath, purpose, folderContext, catalog, llmConfig, activityId,
+      signal, onFileWritten, runCommit,
+      sourceBudget: computeIngestSourceBudget,
+      splitChunks: splitSourceIntoSemanticChunks,
+      maxTokens: computeIngestGenerationMaxTokens,
+      language: languageRule(sourceContent), parseFiles: parseFileBlocks,
+      buildLog: buildDeterministicIngestLog,
+      injectImages: () => mmCfg.enabled
+        ? injectImagesIntoSourceSummary(pp, sourceIdentity, sourceSummarySlug, savedImages, getLanguagePromptName(getOutputLanguage(sourceContent)))
+        : Promise.resolve(),
+    })
+  } catch (error) {
+    activity.updateItem(activityId, { status: "error", detail: error instanceof Error ? error.message : String(error) })
+    throw error
   }
 
   const stableContextLength = schema.length + purpose.length + index.length + overview.length
