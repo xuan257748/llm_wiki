@@ -1,3 +1,4 @@
+import { stripExcerptMarkers } from "@/lib/topic-markdown"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { convertFileSrc } from "@tauri-apps/api/core"
 import { openPath } from "@tauri-apps/plugin-opener"
@@ -453,7 +454,7 @@ function TextPreview({ filePath, content, label }: { filePath: string; content: 
   // Rewrite Obsidian image embeds (`![[…]]`) into standard markdown
   // so raw-source previews (e.g. skill-exported docs) actually show
   // their images instead of dumping the embed syntax as text.
-  const renderBody = useMemo(() => transformImageEmbeds(body), [body])
+  const renderBody = useMemo(() => transformImageEmbeds(stripExcerptMarkers(body)), [body])
   // Directory of this file (project-absolute) so relative image
   // references (`../assets/x.png`) resolve against the file's own
   // location, Obsidian-style.

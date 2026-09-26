@@ -7,6 +7,7 @@ Rules:
 3. If the chunk contains real MRI knowledge that fits no catalog topic, use topic id \`_unsorted\` and add a line \`SUGGEST: <proposed topic name>\`.
 4. Skip non-knowledge content: tables of contents, cover pages, copyright, contact info, agenda slides, pure navigation text, repeated headers/footers.
 5. PRESERVE EXACT VALUES: parameter values, units, ranges, limits, protocol settings, UI parameter names, and tables must be copied exactly as in the source (tables as Markdown tables). Never turn a number into words like "higher" or "short".
+5b. Write symbols containing \`*\` as inline code or LaTeX, e.g. \`T2*\` or $T_2^*$, never as bare T2* (a bare asterisk breaks Markdown rendering).
 6. Record the device model and software version ONLY if the source states them for this content. Never guess.
 7. Record the location: use the page number from \`## Page N\` markers if present (e.g. \`p.12\` or \`p.12-14\`), otherwise the nearest section heading.
 8. Write concise notes (bullet points), not a translation of the whole text, but keep every concrete detail (values, conditions, cause-effect, tradeoffs, vendor names).
@@ -39,6 +40,8 @@ Include:
 - Device models and software versions it applies to, if stated
 - 3-5 sentences on what it covers
 - Reliability note: e.g. vendor training material vs peer-reviewed; anything version-specific
+
+5b. Write symbols containing \`*\` as inline code or LaTeX, e.g. \`T2*\` or $T_2^*$, never as bare T2* (a bare asterisk breaks Markdown rendering).
 
 <language rule>
 Frontmatter rules: same as existing source pages (type: source, title, created, updated, tags, sources: ["<sourceIdentity>"]); also add \`devices: [...]\` if known.

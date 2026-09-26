@@ -1,3 +1,4 @@
+import { stripExcerptMarkers } from "@/lib/topic-markdown"
 import { useMemo } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
@@ -50,7 +51,7 @@ export function WikiReader({ body, sourceBody, sourceOffset = 0, filePath }: Wik
   // wikilink pass, otherwise the embed target gets mangled into a
   // `#fragment` link.
   const transformed = useMemo(
-    () => transformWikilinks(transformImageEmbeds(body)),
+    () => transformWikilinks(transformImageEmbeds(stripExcerptMarkers(body))),
     [body],
   )
   const sourceLineStarts = useMemo(() => {

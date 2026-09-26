@@ -1,7 +1,7 @@
 import yaml from "js-yaml"
 import { parseFrontmatter } from "./frontmatter"
 import { findTopic, type Topic, type TopicCategory, type TopicCatalog } from "./topic-catalog"
-const today = () => new Date().toISOString().slice(0, 10)
+import { currentWikiDate as today } from "./wiki-date"
 const escapeSource = (source: string) => source.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r/g, "&#13;").replace(/\n/g, "&#10;")
 const blockPattern = () => /^<!-- excerpt:begin source="([^"\r\n]*)" -->\r?\n[\s\S]*?^<!-- excerpt:end -->[ \t]*(?:\r?\n|$)/gm
 export function countExcerptBlocks(content: string): number { return [...content.matchAll(blockPattern())].length }

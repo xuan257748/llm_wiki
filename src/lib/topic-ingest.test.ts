@@ -108,7 +108,7 @@ it("extracts original long chunks without analysis and keeps per-chunk order", a
   await writeFileRaw(`${tmp.path}/raw/sources/${source}`, text)
   const { computeIngestSourceBudget, splitSourceIntoSemanticChunks } = await import("./ingest")
   const { parseTopicCatalog, renderTopicCatalog } = await import("./topic-catalog")
-  const chunks = splitSourceIntoSemanticChunks(text, computeIngestSourceBudget(16000, renderTopicCatalog(parseTopicCatalog(fixture)).length), 0)
+  const chunks = splitSourceIntoSemanticChunks(text, Math.max(6000, Math.min(16000, computeIngestSourceBudget(16000, renderTopicCatalog(parseTopicCatalog(fixture)).length))), 800)
   expect(chunks.length).toBeGreaterThan(1)
   responses = [...chunks.map((_, i) => excerpt().replace("1000", String(i))), card()]
   await ingest()
@@ -133,7 +133,7 @@ it('carries page context into continuation chunks', async () => {
   await writeFileRaw(`${tmp.path}/raw/sources/${source}`, text)
   const { computeIngestSourceBudget, splitSourceIntoSemanticChunks } = await import('./ingest')
   const { parseTopicCatalog, renderTopicCatalog } = await import('./topic-catalog')
-  const chunks = splitSourceIntoSemanticChunks(text, computeIngestSourceBudget(16000, renderTopicCatalog(parseTopicCatalog(fixture)).length), 0)
+  const chunks = splitSourceIntoSemanticChunks(text, Math.max(6000, Math.min(16000, computeIngestSourceBudget(16000, renderTopicCatalog(parseTopicCatalog(fixture)).length))), 800)
   responses = [...chunks.map(() => excerpt()), card()]
   await ingest()
   expect(calls[1].messages[1].content).toContain('Page 12')
@@ -146,4 +146,86 @@ it('instructs the source-card model with the exact FILE delimiters and destinati
   expect(prompt).toContain('---END FILE---')
   expect(prompt).not.toContain('<sourceSummaryPath>')
   expect(prompt).not.toContain('<sourceIdentity>')
+})
+
+it('caps large-context chunks, resumes completed chunks after a card failure, and clears the checkpoint', async () => {
+  const text = Array.from({ length: 1600 }, (_, i) => `## Section ${i}\nTR = ${i} ms. T2* signal.\n`).join('\n')
+  await writeFileRaw(`${tmp.path}/raw/sources/${source}`, text)
+  const { splitSourceIntoSemanticChunks } = await import('./ingest')
+  const chunks = splitSourceIntoSemanticChunks(text, 16000, 800)
+  responses = [...chunks.map(() => excerpt()), 'invalid card']
+  await expect(ingest()).rejects.toThrow('Source card')
+  expect(calls).toHaveLength(chunks.length + 1)
+  expect(calls[1].messages[1].content).toContain(chunks[1].overlapBefore)
+  const { readdir } = await import('node:fs/promises')
+  const dir = `${tmp.path}/.llm-wiki/topic-ingest-checkpoints`
+  expect(await readdir(dir)).toHaveLength(1)
+  calls = []; responses = [card()]
+  await ingest()
+  expect(calls).toHaveLength(1)
+  expect(await readdir(dir)).toHaveLength(0)
+})
+
+it('retries a truncated chunk with smaller chunks and protects written star symbols', async () => {
+  const text = '## Relaxation\n' + 'T2* signal and TR = 4000 ms.\n'.repeat(200)
+  await writeFileRaw(`${tmp.path}/raw/sources/${source}`, text)
+  const { splitSourceIntoSemanticChunks } = await import('./ingest')
+  const children = splitSourceIntoSemanticChunks(text, Math.floor(text.length / 2), 400)
+  responses = [excerpt().replace('---END EXCERPT---', ''), ...children.map(() => excerpt().replace('1000 s/mm²', 'T2*')), card()]
+  await ingest()
+  expect(calls).toHaveLength(children.length + 2)
+  expect(await readFileRaw(`${tmp.path}/wiki/topics/sequences/dwi.md`)).toContain('`T2*`')
+  expect(await readFileRaw(`${tmp.path}/.llm-wiki/ingest-warnings.log`)).toContain('Split truncated chunk')
+})
+
+it('stops after two split levels and preserves existing pages', async () => {
+  responses = [excerpt(), card()]
+  await ingest()
+  const topicPath = `${tmp.path}/wiki/topics/sequences/dwi.md`
+  const before = await readFileRaw(topicPath)
+  await writeFileRaw(`${tmp.path}/raw/sources/${source}`, Array.from({ length: 180 }, (_, i) => `## Sequence ${i}\nTR = 4000 ms. ${'Parameter details. '.repeat(3)}\n`).join('\n'))
+  responses = Array(20).fill(excerpt().replace('---END EXCERPT---', ''))
+  calls = []
+  await expect(ingest()).rejects.toThrow('Unclosed excerpt')
+  expect(calls).toHaveLength(3)
+  expect(await readFileRaw(topicPath)).toBe(before)
+  expect(await readFileRaw(`${tmp.path}/.llm-wiki/ingest-warnings.log`)).toContain('depth 2')
+})
+
+it.each(['content', 'model', 'catalog', 'corrupt'])('invalidates incompatible checkpoints: %s', async change => {
+  responses = [excerpt(), 'bad card']
+  await expect(ingest()).rejects.toThrow('Source card')
+  if (change === 'content') await writeFileRaw(`${tmp.path}/raw/sources/${source}`, 'New source data')
+  if (change === 'model') useWikiStore.getState().setLlmConfig({ ...useWikiStore.getState().llmConfig, model: 'different-model' })
+  if (change === 'catalog') await writeFileRaw(`${tmp.path}/topics.yaml`, fixture.replace('扩散物理与 DWI', '扩散知识'))
+  if (change === 'corrupt') {
+    const { readdir } = await import('node:fs/promises')
+    const dir = `${tmp.path}/.llm-wiki/topic-ingest-checkpoints`
+    for (const name of await readdir(dir)) await writeFileRaw(`${dir}/${name}`, '{bad json')
+  }
+  calls = []; responses = [excerpt(), card()]
+  await ingest()
+  expect(calls).toHaveLength(2)
+})
+
+it('resumes after an extraction failure without duplicating the first chunk', async () => {
+  const text = Array.from({ length: 900 }, (_, i) => `## Page ${i}\nTR = ${i} ms.\n`).join('\n')
+  await writeFileRaw(`${tmp.path}/raw/sources/${source}`, text)
+  const { splitSourceIntoSemanticChunks } = await import('./ingest')
+  const chunks = splitSourceIntoSemanticChunks(text, 16000, 800)
+  responses = [excerpt().replace('1000', '1234'), 'invalid response']
+  await expect(ingest()).rejects.toThrow('Invalid excerpt response')
+  calls = []; responses = [...chunks.slice(1).map(() => excerpt()), card()]
+  await ingest()
+  expect(calls).toHaveLength(chunks.length)
+  const page = await readFileRaw(`${tmp.path}/wiki/topics/sequences/dwi.md`)
+  expect(page.match(/1234/g)).toHaveLength(1)
+})
+
+it('bounds checkpoint filenames for long Unicode names without identity collisions', async () => {
+  const { topicCheckpointFilename } = await import('./topic-checkpoint')
+  const name = '磁'.repeat(80)
+  const pdf = topicCheckpointFilename(`${name}.pdf`, '0123456789abcdef')
+  expect(Buffer.byteLength(pdf)).toBeLessThan(255)
+  expect(pdf).not.toBe(topicCheckpointFilename(`${name}.md`, '0123456789abcdef'))
 })
